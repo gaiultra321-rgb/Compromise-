@@ -1,0 +1,86 @@
+name: RDP + Chrome Remote Desktop + Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      crd_code:           { description: "CRD Windows Command (Copy from Google Headless)", required: true }
+      crd_pin:            { description: "CRD PIN (6 digits)", required: true, default: "123456" }
+      
+      # Telegram Inputs
+      tg_bot_token:       { description: "Telegram Bot Token", required: true }
+      tg_chat_id:         { description: "Telegram Chat ID", required: true }
+
+      runtime_minutes:    { description: "Runtime (max 360)", required: false, default: "355" }
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 370
+    env:
+      RDP_USER: Bullettemporary
+      RDP_PASS: Bullet@12345
+
+    steps:
+      - name: Runtime Setup
+        run: |
+          $rt = [int]"${{ inputs.runtime_minutes }}"; if ($rt -lt 5) { $rt = 355 }
+          "RUNTIME_MINUTES=$rt" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Create Windows User (For Desktop Unlock)
+        run: |
+          $u=$env:RDP_USER; $p=$env:RDP_PASS
+          $sec = ConvertTo-SecureString $p -AsPlainText -Force
+          if (-not (Get-LocalUser -Name $u -EA SilentlyContinue)) { 
+            New-LocalUser -Name $u -Password $sec -AccountNeverExpires
+            Add-LocalGroupMember "Administrators" $u
+          }
+
+      - name: Install Chrome Remote Desktop
+        run: |
+          $msi = "$env:TEMP\crd.msi"
+          Invoke-WebRequest "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $msi
+          Start-Process msiexec.exe -ArgumentList "/i","`"$msi`"","/quiet","/norestart" -Wait
+          Remove-Item $msi -Force
+
+      - name: Start Chrome Remote Desktop Host
+        run: |
+          $raw = @'
+          ${{ inputs.crd_code }}
+          '@.Trim()
+          $pin = "${{ inputs.crd_pin }}".Trim()
+          $starter = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          $code = $null
+          if ($raw -match '--code\s*=\s*"?([^"\s]+)') { $code = ([regex]::Match($raw,'--code\s*=\s*"?([^"\s]+)')).Groups[1].Value }
+          elseif ($raw -match '^4\/') { $code = $raw }
+          
+          if ($code) {
+            Write-Host "CRD Code found, starting host..."
+            $args = @("--code=""$code""","--redirect-url=""https://remotedesktop.google.com/_/oauthredirect""","--name=""$Env:COMPUTERNAME""","--pin=""$pin""")
+            Start-Process -FilePath $starter -ArgumentList $args -Wait
+            Write-Host "Host started!"
+          } else {
+            Write-Error "CRD Code not found in the input! Make sure you pasted the full Windows cmd code."
+          }
+          Start-Sleep -Seconds 15
+
+      - name: Send Info to Telegram
+        run: |
+          $token = "${{ inputs.tg_bot_token }}"
+          $chatId = "${{ inputs.tg_chat_id }}"
+          $cap = "🟢 *CRD Online!*`n`n🌐 Go to: [remotedesktop.google.com/access](https://remotedesktop.google.com/access)`n`n👤 PC User: $env:RDP_USER`n🔑 PC Pass: $env:RDP_PASS`n🔐 CRD PIN: ${{ inputs.crd_pin }}"
+          curl.exe -s -X POST "https://api.telegram.org/bot$token/sendMessage" -d chat_id=$chatId -d text="$cap" -d parse_mode="Markdown" -d disable_web_page_preview="true"
+
+      - name: Keep Alive Loop
+        run: |
+          $end = (Get-Date).AddMinutes([int]"${{ env.RUNTIME_MINUTES }}")
+          while ((Get-Date) -lt $end) {
+            Write-Host "CRD RDP is Running... $((Get-Date).ToString())"
+            Start-Sleep -Seconds 60
+          }
