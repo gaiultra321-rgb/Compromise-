@@ -85,12 +85,17 @@ jobs:
           $url = "https://github.com/rustdesk/rustdesk/releases/download/1.3.0/rustdesk-1.3.0-x86_64.exe"
           $out = "$env:TEMP\rustdesk.exe"
           Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process -FilePath $out -ArgumentList "--install" -Wait
+          # ইনস্টল কমান্ড মুছে দেওয়া হয়েছে, এখন আর হ্যাং হবে না।
 
       - name: Launch RustDesk & Send Info to Telegram
         run: |
           $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
-          if (Test-Path $rdExe) { Start-Process -FilePath $rdExe } else { Write-Host "RustDesk path not found, trying temp..." ; Start-Process -FilePath "$env:TEMP\rustdesk.exe" }
+          if (Test-Path $rdExe) { 
+            Start-Process -FilePath $rdExe 
+          } else { 
+            Write-Host "RustDesk path not found, trying temp..." 
+            Start-Process -FilePath "$env:TEMP\rustdesk.exe" 
+          }
           Start-Sleep -Seconds 15
 
           # Screenshot logic
