@@ -1,4 +1,4 @@
-name: Drive to Telegram Ultra Compress
+name: Mediafire to Telegram Ultra Compress
 
 on:
   workflow_dispatch:
@@ -12,39 +12,41 @@ on:
       api_hash:
         description: 'Enter Telegram API Hash'
         required: true
-      drive_link:
-        description: 'Direct Download Link of File'
+      mediafire_link:
+        description: 'Mediafire Direct Download Link'
         required: true
 
 jobs:
-  build:
+  compress_and_send:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Install Tools & Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full wget python3-pip
-          pip3 install telethon # টেলিগ্রাম পাঠানোর জন্য লাইব্রেরি
+          pip3 install telethon
 
-      - name: Download File from Drive
+      - name: Download File from Mediafire
         run: |
-          # ড্রাইভ লিংক থেকে ফাইল ডাউনলোড করার জন্য wget ব্যবহার করা হয়েছে
-          wget --no-check-certificate "${{ github.event.inputs.drive_link }}" -O game_input.zip
+          # মিডিয়াফায়ার ডাইরেক্ট লিঙ্ক ব্যবহার করে ডাউনলোড
+          wget -O game_input.zip "${{ github.event.inputs.mediafire_link }}"
 
-      - name: Unzip and Ultra Compress
+      - name: Unzip Original File
         run: |
-          # প্রথমে আনজিপ করে আসল ফাইল বের করা
-          mkdir extracted
-          7z x game_input.zip -oextracted/
-          
-          # আল্ট্রা কমপ্রেশন (7z ফরম্যাটে)
-          7z a -t7z -m0=lzma2 -mx=9 -md=128m -ms=on output_game.7z ./extracted/*
+          mkdir extracted_files
+          7z x game_input.zip -oextracted_files/
 
-      - name: Upload to Telegram
+      - name: Ultra Compress to 7z
+        run: |
+          # 7-Zip Ultra Compression সেটিংস
+          # -mx=9 (Ultra), -md=128m (Dict size), -ms=on (Solid)
+          7z a -t7z -m0=lzma2 -mx=9 -md=128m -ms=on compressed_game.7z ./extracted_files/*
+
+      - name: Send to Telegram
         env:
           BOT_TOKEN: ${{ github.event.inputs.bot_token }}
           API_ID: ${{ github.event.inputs.api_id }}
@@ -63,10 +65,14 @@ jobs:
               client = TelegramClient('bot', api_id, api_hash)
               await client.start(bot_token=bot_token)
               
-              # আপনার চ্যাট আইডি বা ইউজারনেম এখানে দিন (@username)
-              # ফাইলটি পাঠানোর সময় প্রগ্রেস দেখাবে
-              await client.send_file('me', 'output_game.7z', caption="✅ Ultra Compressed Game File")
-              print("File sent to your Saved Messages!")
+              file_path = 'compressed_game.7z'
+              if os.path.exists(file_path):
+                  print(f"Uploading {file_path} to Telegram...")
+                  # 'me' মানে আপনার নিজের সেভড মেসেজে যাবে
+                  await client.send_file('me', file_path, caption="✅ Ultra Compressed File Completed!")
+                  print("Upload successful!")
+              else:
+                  print("Error: Compressed file not found!")
 
           asyncio.run(main())
           EOF
