@@ -1,0 +1,73 @@
+name: Drive to Telegram Ultra Compress
+
+on:
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: 'Enter Telegram Bot Token'
+        required: true
+      api_id:
+        description: 'Enter Telegram API ID'
+        required: true
+      api_hash:
+        description: 'Enter Telegram API Hash'
+        required: true
+      drive_link:
+        description: 'Direct Download Link of File'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full wget python3-pip
+          pip3 install telethon # টেলিগ্রাম পাঠানোর জন্য লাইব্রেরি
+
+      - name: Download File from Drive
+        run: |
+          # ড্রাইভ লিংক থেকে ফাইল ডাউনলোড করার জন্য wget ব্যবহার করা হয়েছে
+          wget --no-check-certificate "${{ github.event.inputs.drive_link }}" -O game_input.zip
+
+      - name: Unzip and Ultra Compress
+        run: |
+          # প্রথমে আনজিপ করে আসল ফাইল বের করা
+          mkdir extracted
+          7z x game_input.zip -oextracted/
+          
+          # আল্ট্রা কমপ্রেশন (7z ফরম্যাটে)
+          7z a -t7z -m0=lzma2 -mx=9 -md=128m -ms=on output_game.7z ./extracted/*
+
+      - name: Upload to Telegram
+        env:
+          BOT_TOKEN: ${{ github.event.inputs.bot_token }}
+          API_ID: ${{ github.event.inputs.api_id }}
+          API_HASH: ${{ github.event.inputs.api_hash }}
+        run: |
+          python3 - <<EOF
+          import os
+          import asyncio
+          from telethon import TelegramClient
+
+          async def main():
+              api_id = int(os.environ['API_ID'])
+              api_hash = os.environ['API_HASH']
+              bot_token = os.environ['BOT_TOKEN']
+              
+              client = TelegramClient('bot', api_id, api_hash)
+              await client.start(bot_token=bot_token)
+              
+              # আপনার চ্যাট আইডি বা ইউজারনেম এখানে দিন (@username)
+              # ফাইলটি পাঠানোর সময় প্রগ্রেস দেখাবে
+              await client.send_file('me', 'output_game.7z', caption="✅ Ultra Compressed Game File")
+              print("File sent to your Saved Messages!")
+
+          asyncio.run(main())
+          EOF
+          
